@@ -1,0 +1,5 @@
+openai 
+azure-search-documents 
+python-gitlab 
+pandas 
+sqlite3
