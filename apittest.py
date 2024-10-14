@@ -5,6 +5,56 @@ import sqlite3
 import os
 from azure.search.documents import SearchClient
 from azure.core.credentials import AzureKeyCredential
+from azure.search.documents.indexes import SearchIndexClient
+from azure.search.documents.indexes.models import SearchIndex, SimpleField, SearchableField, VectorSearch
+
+# Function to create index if it doesn't exist
+def create_index_if_not_exists():
+    index_client = SearchIndexClient(
+        endpoint=f"https://{AZURE_SEARCH_SERVICE_NAME}.search.windows.net",
+        credential=AzureKeyCredential(AZURE_SEARCH_API_KEY)
+    )
+    
+    # Check if index already exists
+    try:
+        index = index_client.get_index(AZURE_SEARCH_INDEX_NAME)
+        print(f"Index '{AZURE_SEARCH_INDEX_NAME}' already exists.")
+        return
+    except Exception:
+        print(f"Index '{AZURE_SEARCH_INDEX_NAME}' does not exist. Creating...")
+
+    # Define the fields of the index, including the embedding as a vector
+    fields = [
+        SimpleField(name="id", type="Edm.String", key=True),
+        SearchableField(name="title", type="Edm.String"),
+        SearchableField(name="description", type="Edm.String"),
+        SimpleField(name="author", type="Edm.String"),
+        SimpleField(name="state", type="Edm.String"),
+        SimpleField(name="created_at", type="Edm.String"),
+        SimpleField(name="updated_at", type="Edm.String"),
+        SimpleField(name="labels", type="Edm.String"),
+        SimpleField(name="embedding", type="Edm.Single", isFilterable=False, isSortable=False, isFacetable=False, isSearchable=False, 
+                    vectorSearchDimensions=1536)  # Embedding field with 1536 dimensions for `text-embedding-ada-002`
+    ]
+
+    # Define vector search settings (if applicable)
+    vector_search = VectorSearch(
+        algorithm_configurations=[
+            {"name": "default", "kind": "hnsw"}
+        ]
+    )
+
+    # Create the index
+    index = SearchIndex(
+        name=AZURE_SEARCH_INDEX_NAME,
+        fields=fields,
+        vector_search=vector_search
+    )
+    
+    # Create the index in Azure Cognitive Search
+    index_client.create_index(index)
+    print(f"Index '{AZURE_SEARCH_INDEX_NAME}' created successfully.")
+
 
 # 1. GitLab credentials and setup
 GITLAB_TOKEN = os.getenv('GITLAB_TOKEN')  # Load GitLab token from env variables
@@ -120,6 +170,10 @@ def process_issues_in_chunks_and_embed(sqlite_db, chunksize):
 
 # Main function to tie everything together
 def main():
+    # Create index if it does not exist
+    print("Checking for index and creating if necessary...")
+    create_index_if_not_exists()
+
     # Fetch issues from GitLab
     print("Fetching issues from GitLab...")
     issue_data = fetch_group_issues(GROUP_ID, GITLAB_URL, GITLAB_TOKEN)
